@@ -1,60 +1,85 @@
 #include <pebble.h>
+#define NUM_ROWS 2
+#define TITLE_HEIGHT 24
 
-static Window *s_window;
-static TextLayer *s_text_layer;
+static Window *s_window_start;
+static MenuLayer *s_menu_layer;
+static Layer *s_canvas_layer;
 
-static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Select");
+static uint16_t get_num_rows_callback(MenuLayer *menu_layer,
+                                      uint16_t section_index, void *context) {
+  const uint16_t num_rows = NUM_ROWS;
+  return num_rows;
 }
 
-static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Up");
+static void draw_row_callback(GContext *ctx, const Layer *cell_layer,
+                              MenuIndex *cell_index, void *context) {
+  switch (cell_index->row) {
+  case 0:
+    menu_cell_basic_draw(ctx, cell_layer, "Following", NULL, NULL);
+    break;
+  case 1:
+    menu_cell_basic_draw(ctx, cell_layer, "Feeds", NULL, NULL);
+    break;
+  default:
+    break;
+  }
 }
 
-static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Down");
+static int16_t get_cell_height_callback(struct MenuLayer *menu_layer,
+                                        MenuIndex *cell_index, void *context) {
+  const int16_t cell_height = 36;
+  return cell_height;
 }
 
-static void prv_click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click_handler);
-  window_single_click_subscribe(BUTTON_ID_UP, prv_up_click_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
+static void select_callback(struct MenuLayer *menu_layer, MenuIndex *cell_index,
+                            void *context) {
+  // Do something in response to the button press
 }
 
-static void prv_window_load(Window *window) {
+static void canvas_update_proc(Layer *layer, GContext *ctx) {
+  graphics_context_set_fill_color(ctx, GColorPictonBlue);
+  GRect bounds = layer_get_bounds(layer);
+  graphics_fill_rect(ctx,bounds,0,0);
+
+}
+static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
+  GRect titlebar = GRect(0, 0, bounds.size.w, TITLE_HEIGHT);
+  GRect menu_bounds =
+      GRect(0, TITLE_HEIGHT, bounds.size.w, bounds.size.h - TITLE_HEIGHT);
+  s_canvas_layer = layer_create(titlebar);
+  layer_set_update_proc(s_canvas_layer, canvas_update_proc);
 
-  s_text_layer = text_layer_create(GRect(0, 72, bounds.size.w, 20));
-  text_layer_set_text(s_text_layer, "Press a button");
-  text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_text_layer));
+
+  s_menu_layer = menu_layer_create(menu_bounds);
+  menu_layer_set_click_config_onto_window(s_menu_layer, window);
+
+  menu_layer_set_callbacks(s_menu_layer, NULL,
+                           (MenuLayerCallbacks){
+                               .get_num_rows = get_num_rows_callback,
+                               .draw_row = draw_row_callback,
+                               .get_cell_height = get_cell_height_callback,
+                               .select_click = select_callback,
+
+                           });
+  layer_add_child(window_layer, s_canvas_layer);
+  layer_add_child(window_layer, menu_layer_get_layer(s_menu_layer));
 }
 
-static void prv_window_unload(Window *window) {
-  text_layer_destroy(s_text_layer);
+static void window_unload(Window *window) {
+  menu_layer_destroy(s_menu_layer);
+  window_destroy(window);
 }
 
-static void prv_init(void) {
-  s_window = window_create();
-  window_set_click_config_provider(s_window, prv_click_config_provider);
-  window_set_window_handlers(s_window, (WindowHandlers) {
-    .load = prv_window_load,
-    .unload = prv_window_unload,
-  });
-  const bool animated = true;
-  window_stack_push(s_window, animated);
-}
-
-static void prv_deinit(void) {
-  window_destroy(s_window);
-}
-
-int main(void) {
-  prv_init();
-
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
-
-  app_event_loop();
-  prv_deinit();
+void start_menu_push() {
+  if (!s_window_start) {
+    s_window_start = window_create();
+    window_set_window_handlers(s_window_start, (WindowHandlers){
+                                                   .load = window_load,
+                                                   .unload = window_unload,
+                                               });
+  }
+  window_stack_push(s_window_start, true);
 }
